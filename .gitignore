@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tool outputs
+cluster_topology.tsv
+consensus_topology.tsv
+consensus_topology.txt
+hairpin_report.tsv
+hairpin_report.txt
+hairpin_edges.tsv
+hairpin_summary.tsv
+hairpin_contigs.fasta
+hairpin_tir_coords.tsv
+*.hairpins.gfa
+
+# Assembly data (don't commit large sequence files)
+*.gfa
+*.fasta
+*.fa
+*.fastq
+*.fq
+*.png
+
+# OS
+.DS_Store
