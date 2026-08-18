@@ -24,6 +24,7 @@ hairpin_tir_coords.tsv
 *.fastq
 *.fq
 *.png
+!docs/*.png
 
 # OS
 .DS_Store

@@ -501,61 +501,93 @@ def merge_linear_paths(graph: Graph):
 # following the highest-depth branch and discarding everything else.
 # ---------------------------------------------------------------------------
 
-def strongest_path_in_component(graph: Graph, component: List[int]) -> Set[int]:
-    """Starting from the highest-depth tig in this connected component, walk
-    outward in both directions, always taking the highest-depth candidate at
-    any branch. Returns the set of tig numbers on the resulting path (or
-    loop) -- everything else in the component is a discarded side-branch.
+def strongest_path_in_component(graph: Graph, component: List[int]) -> List[Link]:
+    """Starting from the tig with the most total supporting evidence (depth x
+    length -- NOT raw per-base DP:f: depth) in this connected component, walk
+    outward in both directions, at every branch always taking the candidate
+    with the most total evidence. Returns the ordered path walked (a list of
+    (number, strand) hops, in a single consistent forward orientation);
+    everything else in the component is a discarded side-branch.
 
-    SCOPE: `kept` tracks tig *numbers*, not (number, strand) pairs. That's
-    fine for the ordinary case of two different tigs competing at a branch.
-    But if a single repeat tig connects the SAME junction from both of its
-    strands (a terminal inverted repeat), that tig stays "in kept" the moment
-    either of its two strand-orientations is visited, so the walk never
-    actually decides between the two parallel links and the component stays
-    linked with 2 tigs instead of collapsing to 1. resolve_clusters_by_depth
-    detects that stall (removed == 0 with clusters still >1 tig) and falls
-    back to duplicate_unitig() for exactly this case -- see the wiki's
+    Ranking by depth x length rather than raw depth matters because a short,
+    locally noisy fragment can carry a higher per-base DP:f: value than a
+    long, well-supported backbone despite representing far less actual
+    sequencing evidence -- ranking by raw depth alone lets such a fragment's
+    self-loop outrank (and so strand and discard) the real backbone at a
+    branch. Total evidence is a much closer match to "which alternative is
+    actually more likely to be real biology."
+
+    SCOPE: `visited` (inside walk_one_way) tracks tig *numbers*, not
+    (number, strand) pairs. That's fine for the ordinary case of two
+    different tigs competing at a branch. But if a single repeat tig
+    connects the SAME junction from both of its strands (a terminal inverted
+    repeat), the walk stops the moment it revisits that tig's number, so it
+    never actually decides between the two parallel links and the component
+    stays linked with 2 tigs instead of collapsing to 1. resolve_clusters_by_
+    depth detects that stall (removed == 0 with clusters still >1 tig) and
+    falls back to duplicate_unitig() for exactly this case -- see the wiki's
     "linear plasmid with terminal inverted repeat" example, which needs the
     manual `-d` step for the same reason.
     """
     comp_set = set(component)
-    start = max(component, key=lambda n: (graph.unitigs[n].depth, graph.unitigs[n].length(), n))
-    kept: Set[int] = set()
 
-    def walk(num: int, strand: Strand):
+    def evidence(n: int) -> float:
+        u = graph.unitigs[n]
+        return u.depth * u.length()
+
+    def walk_one_way(start_num: int, start_strand: Strand, visited: Set[int]) -> List[Link]:
+        # `visited` is shared across both directions' calls (see below): once
+        # one direction's walk has claimed a tig, the other direction must
+        # not also claim it, or the same tig number would appear twice in
+        # the combined path and merge_path's per-tig `del graph.unitigs[n]`
+        # would raise a KeyError on the second occurrence.
+        path: List[Link] = [(start_num, start_strand)]
+        num, strand = start_num, start_strand
         while True:
-            kept.add(num)
             u = graph.unitigs[num]
             links = [l for l in (u.forward_next if strand else u.reverse_next) if l[0] in comp_set]
             if not links:
-                return
+                return path
             if len(links) == 1:
                 nxt = links[0]
             else:
-                nxt = max(links, key=lambda l: (graph.unitigs[l[0]].depth, graph.unitigs[l[0]].length(), l[0]))
-            if nxt[0] in kept:
-                return  # closed a loop, or met the walk coming from the other direction
+                nxt = max(links, key=lambda l: (evidence(l[0]), graph.unitigs[l[0]].length(), l[0]))
+            if nxt[0] in visited:
+                return path  # closed a loop, or met the walk coming from the other direction
             num, strand = nxt
+            visited.add(num)
+            path.append((num, strand))
 
-    walk(start, True)   # explore off the '+' end of the highest-depth tig
-    walk(start, False)  # explore off the '-' end of the highest-depth tig
-    return kept
+    start = max(component, key=lambda n: (evidence(n), graph.unitigs[n].length(), n))
+    shared_visited = {start}
+    fwd = walk_one_way(start, True, shared_visited)    # explore off the '+' end of the strongest tig
+    bwd = walk_one_way(start, False, shared_visited)   # explore off the '-' end of the strongest tig
+    # bwd is oriented "outward" from start's '-' end; flip and reverse it (dropping
+    # its duplicate leading `start` entry) so it can be prepended to fwd as one
+    # continuous forward-oriented path.
+    bwd_rest = [(n, not s) for n, s in reversed(bwd[1:])]
+    return bwd_rest + fwd
 
 
 def resolve_clusters_by_depth(graph: Graph) -> int:
-    """For every connected component with more than one tig, keep only the
-    single highest-depth path through it and delete the rest. Returns the
-    number of tigs removed."""
+    """For every connected component with more than one tig, walk out the
+    single highest-evidence path through it (see strongest_path_in_component),
+    merge that path into one tig, and delete every discarded side-branch.
+    Returns the number of tigs removed (side-branches plus path tigs absorbed
+    into the merge -- i.e. len(component) - 1 per component touched)."""
     removed = 0
     for component in connected_components(graph):
         if len(component) <= 1:
             continue
-        kept = strongest_path_in_component(graph, component)
+        path = strongest_path_in_component(graph, component)
+        kept_nums = {n for n, _ in path}
+        if len(path) > 1:
+            new_num = graph.max_unitig_number() + 1
+            merge_path(graph, path, new_num)
         for n in component:
-            if n not in kept:
+            if n not in kept_nums:
                 del graph.unitigs[n]
-                removed += 1
+        removed += len(component) - 1
     if removed:
         delete_dangling_links(graph)
     return removed

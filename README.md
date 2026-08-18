@@ -13,6 +13,9 @@ classify topology from the graph structure and sequence, rather than from
 dot-plot pixels (which conflate strand orientation and inverted repeats with
 topology).
 
+[![Assembly Cleanup Gallery — raw vs. cleaned Autocycler graphs for 24 samples, side by side](docs/gallery_preview.png)](https://claude.ai/code/artifact/139deab6-c1db-40a3-9321-b652cd3deec6)
+<p align="center"><sub><a href="https://claude.ai/code/artifact/139deab6-c1db-40a3-9321-b652cd3deec6">Assembly Cleanup Gallery</a> — raw vs. <code>autocycler_clean.py</code>-cleaned Bandage renders for all 24 samples in the run below.</sub></p>
+
 Four tools:
 
 | Script | What it does |
@@ -198,6 +201,25 @@ python3 autocycler_clean.py --in-dir . --out-dir cleaned -m 1.0 -R --fasta
 > rather than noise. Treat its output as a strong automatic starting point
 > that still deserves a spot-check in Bandage, especially on samples where
 > the discarded branch had non-trivial depth.
+
+**Changelog**
+
+* **Fixed:** `-R`/`--force-resolve` ranked branch candidates by raw per-base
+  `DP:f:` depth. A short, locally noisy fragment can carry a higher per-base
+  depth than a long, well-supported backbone despite representing far less
+  actual sequencing evidence — so at a branch, a fragment's own self-loop
+  could outrank (and strand) the real backbone entirely. Candidates are now
+  ranked by total evidence (`depth x length`) instead, which is a much closer
+  match to "which alternative is actually more likely to be real biology."
+  Across a 24-sample re-run this recovered 100–120 kb of backbone sequence
+  that had been silently discarded in 5 samples — see the
+  [gallery](https://claude.ai/code/artifact/139deab6-c1db-40a3-9321-b652cd3deec6)
+  above for the before/after.
+* **Fixed:** a `KeyError` crash in `resolve_clusters_by_depth` when a
+  component's forward and backward walks both reached the same tig (each
+  direction tracked its own `visited` set, so the same tig number could end
+  up in the merged path twice). The two directions now share one `visited`
+  set.
 
 ---
 
