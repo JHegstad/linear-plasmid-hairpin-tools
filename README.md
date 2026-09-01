@@ -1,4 +1,4 @@
-<p align="center"><img src="logo-1.1.jpeg" alt="linear-plasmid-hairpin-tools logo" width="300"></p>
+<p align="center"><img src="logo-1.1.jpeg" alt="linear-plasmid-hairpin-tools logo" width="900"></p>
 
 # linear-plasmid-hairpin-tools
 
