@@ -1,3 +1,5 @@
+<p align="center"><img src="logo-linear-plasmid-hairpin-tools.png" alt="linear-plasmid-hairpin-tools logo" width="300"></p>
+
 # linear-plasmid-hairpin-tools
 
 Small, dependency-free Python tools for working out the **topology** of

@@ -25,6 +25,7 @@ hairpin_tir_coords.tsv
 *.fq
 *.png
 !docs/*.png
+!logo-linear-plasmid-hairpin-tools.png
 
 # OS
 .DS_Store
